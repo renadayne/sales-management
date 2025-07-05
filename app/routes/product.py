@@ -375,7 +375,7 @@ async def update_product(
     product.description = description
     
     # Xử lý upload ảnh mới
-    if images:
+    if images and any(image.filename for image in images):
         image_paths = []
         for image in images[:5]:
             if image.filename:
@@ -388,7 +388,9 @@ async def update_product(
                 
                 image_paths.append(filename)
         
-        product.images = image_paths
+        # Chỉ cập nhật ảnh nếu có ảnh mới upload
+        if image_paths:
+            product.images = image_paths
     
     db.commit()
     
