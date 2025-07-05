@@ -40,16 +40,28 @@ def cleanup_old_logs(db: Session):
     db.commit()
 
 @router.get("/", response_class=HTMLResponse)
-async def list_products(request: Request, search: str = "", message: str = "", db: Session = Depends(get_db)):
-    """Hiển thị danh sách sản phẩm với tìm kiếm"""
+async def list_products(request: Request, search: str = "", category: str = "", message: str = "", db: Session = Depends(get_db)):
+    """Hiển thị danh sách sản phẩm với tìm kiếm và filter theo danh mục"""
+    # Xây dựng query base
+    query = db.query(Product)
+    
+    # Filter theo danh mục
+    if category:
+        query = query.filter(Product.category == category)
+    
     # Tìm kiếm sản phẩm theo tên hoặc SKU
     if search:
-        products = db.query(Product).filter(
+        query = query.filter(
             (Product.name.ilike(f"%{search}%")) | 
             (Product.sku.ilike(f"%{search}%"))
-        ).order_by(Product.created_at.desc()).all()
-    else:
-        products = db.query(Product).order_by(Product.created_at.desc()).all()
+        )
+    
+    # Lấy danh sách sản phẩm
+    products = query.order_by(Product.created_at.desc()).all()
+    
+    # Lấy danh sách danh mục để hiển thị trong dropdown
+    categories = db.query(Product.category).distinct().filter(Product.category.isnot(None)).all()
+    category_list = [cat[0] for cat in categories if cat[0]]
     
     # Kiểm tra sản phẩm có số lượng thấp
     low_stock_products = [p for p in products if p.quantity < 5]
@@ -58,14 +70,14 @@ async def list_products(request: Request, search: str = "", message: str = "", d
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Quản lý Sản phẩm</title>
+        <title>Sales Management</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     </head>
     <body>
         <div class="container mt-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1><i class="fas fa-box"></i> Quản lý Sản phẩm</h1>
+                <h1><i class="fas fa-box"></i> Sales Management</h1>
                 <div>
                     <a href="/products/new" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Thêm sản phẩm
@@ -76,19 +88,23 @@ async def list_products(request: Request, search: str = "", message: str = "", d
                 </div>
             </div>
             
-            <!-- Form tìm kiếm -->
+            <!-- Form tìm kiếm và filter -->
             <div class="row mb-4">
-                <div class="col-md-6">
+                <div class="col-md-8">
                     <form method="get" class="d-flex">
                         <input type="text" name="search" value="{search}" class="form-control me-2" 
                                placeholder="Tìm kiếm theo tên hoặc mã SKU...">
+                        <select name="category" class="form-select me-2" style="min-width: 150px;">
+                            <option value="">Tất cả danh mục</option>
+                            {''.join([f'<option value="{cat}" {"selected" if cat == category else ""}>{cat}</option>' for cat in category_list])}
+                        </select>
                         <button type="submit" class="btn btn-outline-primary">
                             <i class="fas fa-search"></i> Tìm
                         </button>
-                        {f'<a href="/products" class="btn btn-outline-secondary ms-2">Xóa tìm kiếm</a>' if search else ''}
+                        {f'<a href="/products" class="btn btn-outline-secondary ms-2">Xóa filter</a>' if search or category else ''}
                     </form>
                 </div>
-                <div class="col-md-6 text-end">
+                <div class="col-md-4 text-end">
                     <span class="text-muted">Tìm thấy {len(products)} sản phẩm</span>
                 </div>
             </div>
@@ -99,7 +115,9 @@ async def list_products(request: Request, search: str = "", message: str = "", d
             
             {f'<div class="alert alert-info"><i class="fas fa-search"></i> Kết quả tìm kiếm cho: "{search}"</div>' if search else ''}
             
-            {f'<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Không tìm thấy sản phẩm nào phù hợp với từ khóa "{search}"</div>' if search and not products else ''}
+            {f'<div class="alert alert-info"><i class="fas fa-filter"></i> Đang lọc theo danh mục: "{category}"</div>' if category else ''}
+            
+            {f'<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Không tìm thấy sản phẩm nào phù hợp với điều kiện tìm kiếm</div>' if (search or category) and not products else ''}
             
             <div class="row">
                 {''.join([f'''
